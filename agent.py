@@ -44,10 +44,5 @@ async def entrypoint(ctx: JobContext):
     )
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(
-        entrypoint_fnc=entrypoint,
-        worker_type=agents.WorkerType.ROOM,
-        max_idle_time=60,
-        num_idle_processes=1,
-        shutdown_process_after_idle_time=300
-    ))
+    # Simple version without extra parameters
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
