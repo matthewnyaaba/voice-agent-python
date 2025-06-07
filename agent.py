@@ -50,9 +50,5 @@ async def entrypoint(ctx: JobContext):
     logger.info("Agent session started, ready for conversation!")
 
 if __name__ == "__main__":
-    # This tells the agent to join ALL rooms
-    cli.run_app(WorkerOptions(
-        entrypoint_fnc=entrypoint,
-        auto_subscribe=AutoSubscribe.AUDIO_ONLY,
-        room_prefix=""  # Accept all rooms
-    ))
+    # Simple version that works with your LiveKit version
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
