@@ -1,0 +1,53 @@
+import os
+import logging
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from livekit import agents
+from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
+from livekit.plugins import openai, elevenlabs, silero
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class Assistant(Agent):
+    def __init__(self) -> None:
+        llm = openai.LLM(model="gpt-4o")
+        stt = openai.STT()
+        
+        eleven_api_key = os.getenv('ELEVEN_API_KEY')
+        tts = elevenlabs.TTS(api_key=eleven_api_key) if eleven_api_key else openai.TTS()
+        
+        silero_vad = silero.VAD.load()
+
+        super().__init__(
+            instructions="""
+                You are a helpful assistant communicating 
+                via voice. Be friendly and conversational.
+            """,
+            stt=stt,
+            llm=llm,
+            tts=tts,
+            vad=silero_vad,
+        )
+
+async def entrypoint(ctx: JobContext):
+    logger.info(f"Agent started for room: {ctx.room.name}")
+    await ctx.connect()
+    
+    session = AgentSession()
+    
+    await session.start(
+        room=ctx.room,
+        agent=Assistant()
+    )
+
+if __name__ == "__main__":
+    cli.run_app(WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        worker_type=agents.WorkerType.ROOM,
+        max_idle_time=60,
+        num_idle_processes=1,
+        shutdown_process_after_idle_time=300
+    ))
