@@ -1,6 +1,18 @@
+# LiveKit and plugins
 livekit
 livekit-agents>=0.8.0
 livekit-plugins-openai>=0.7.0
 livekit-plugins-elevenlabs>=0.6.0
 livekit-plugins-silero>=0.6.0
+
+# FastAPI for web server
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+
+# Environment and utilities
 python-dotenv
+
+# CORS support
+aiofiles
