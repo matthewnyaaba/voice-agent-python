@@ -27,18 +27,24 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app
 app = FastAPI(title="Ghana Teacher Education Voice Agent")
 
-# Enable CORS for your Next.js frontend
+# Enable CORS for your Next.js frontend - UPDATED WITH EXACT DOMAINS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://localhost:3001",
+        "https://ghana-teacher-voice.vercel.app",
         "https://ghanateachervoice.vercel.app",
+        "https://ghana-teacher-voice-*.vercel.app",
         "https://ghanateachervoice-*.vercel.app",
-        "https://*.vercel.app"
+        "https://ghana-teacher-voice-matthew-nyaabas-projects.vercel.app",
+        "https://ghanateachervoice-ino5l6wrc-matthew-nyaabas-projects.vercel.app"
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 # Request/Response models
@@ -76,6 +82,11 @@ async def health_check():
 async def health():
     """Health check for monitoring"""
     return {"status": "healthy", "agent": "teacher-education"}
+
+@app.options("/token")
+async def token_options():
+    """Handle OPTIONS request for CORS preflight"""
+    return {"status": "ok"}
 
 @app.post("/token")
 async def create_token(request: TokenRequest) -> Dict[str, str]:
@@ -119,6 +130,11 @@ async def create_token(request: TokenRequest) -> Dict[str, str]:
         logger.error(f"Token creation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.options("/auth/login")
+async def login_options():
+    """Handle OPTIONS request for CORS preflight"""
+    return {"status": "ok"}
+
 @app.post("/auth/login")
 async def login(request: LoginRequest):
     """Handle user login"""
@@ -145,6 +161,11 @@ async def login(request: LoginRequest):
         "token": f"demo-token-{request.email}-{datetime.now().timestamp()}",
         "user": user_data
     }
+
+@app.options("/auth/register")
+async def register_options():
+    """Handle OPTIONS request for CORS preflight"""
+    return {"status": "ok"}
 
 @app.post("/auth/register")
 async def register(request: RegisterRequest):
