@@ -7,7 +7,7 @@ livekit-plugins-silero>=0.6.0
 
 # FastAPI for web server
 fastapi
-uvicorn[standard]
+uvicorn>=0.20.0
 python-multipart
 pydantic
 aiofiles
@@ -30,5 +30,8 @@ gotrue==2.1.0
 realtime==1.0.2
 storage3==0.6.1
 
-# OpenAI - Let livekit-plugins-openai handle the version
-# The livekit plugin will install the correct OpenAI version
+# Additional dependencies for uvicorn standard
+httptools
+uvloop
+websockets
+watchfiles
