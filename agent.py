@@ -269,20 +269,30 @@ class TeacherEducationAssistant(Agent):
 
 # API ENDPOINTS
 
+# FIX 1: ADD ROOT ENDPOINT HERE
 @app.get("/")
-async def health_check():
-    """Health check endpoint"""
+async def root():
+    """Root endpoint - shows API is running"""
     return {
         "status": "healthy",
         "service": "ghana-teacher-education-agent",
         "timestamp": datetime.now().isoformat(),
-        "message": "Teacher Education Voice Agent API is running"
+        "message": "Ghana Teacher Education Voice Agent API is running!",
+        "endpoints": {
+            "health": "/health",
+            "docs": "/docs",
+            "auth": "/auth/login, /auth/register",
+            "chat": "/chat",
+            "token": "/token",
+            "curriculum": "/api/curriculum/courses, /api/curriculum/standards"
+        },
+        "version": "1.0.0"
     }
 
 @app.get("/health")
 async def health():
     """Health check for monitoring"""
-    return {"status": "healthy", "agent": "teacher-education"}
+    return {"status": "healthy", "agent": "teacher-education", "timestamp": datetime.now().isoformat()}
 
 @app.options("/token")
 async def token_options():
