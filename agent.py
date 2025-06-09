@@ -17,6 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
+# Supabase imports
+from supabase import create_client, Client
+
 # LiveKit imports
 from livekit import api, agents
 from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, AutoSubscribe
@@ -25,6 +28,17 @@ from livekit.plugins import openai, elevenlabs, silero
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize Supabase client
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_SERVICE_KEY")  # Use service key for backend
+supabase: Client = None
+
+if supabase_url and supabase_key:
+    supabase = create_client(supabase_url, supabase_key)
+    logger.info("Supabase client initialized")
+else:
+    logger.warning("Supabase credentials not found - database features disabled")
 
 # Create FastAPI app
 app = FastAPI(title="Ghana Teacher Education Voice Agent")
@@ -90,6 +104,7 @@ class RegisterRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    user_id: Optional[str] = None  # Added for database saving
     user_role: str = "student"
     user_program: Optional[str] = None
     user_year: Optional[int] = None
@@ -300,13 +315,19 @@ async def root():
             "token": "/token",
             "curriculum": "/api/curriculum/courses, /api/curriculum/standards"
         },
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "database": "connected" if supabase else "not connected"
     }
 
 @app.get("/health")
 async def health():
     """Health check for monitoring"""
-    return {"status": "healthy", "agent": "teacher-education", "timestamp": datetime.now().isoformat()}
+    return {
+        "status": "healthy", 
+        "agent": "teacher-education", 
+        "timestamp": datetime.now().isoformat(),
+        "database": "connected" if supabase else "not connected"
+    }
 
 @app.post("/token")
 async def create_token(request: TokenRequest) -> Dict[str, str]:
@@ -372,47 +393,98 @@ async def create_token(request: TokenRequest) -> Dict[str, str]:
 
 @app.post("/auth/login")
 async def login(request: LoginRequest):
-    """Handle user login"""
-    user_data = {
-        "id": f"user-{random.randint(1000, 9999)}",
-        "email": request.email,
-        "role": "student",
-        "institution": "University of Education, Winneba",
-        "institutionType": "university",
-        "program": "B.Ed Early Grade",
-        "year": 2
-    }
-    
-    if "teacher" in request.email:
-        user_data["role"] = "teacher"
-        user_data["name"] = "Teacher " + request.email.split("@")[0].title()
-    elif "admin" in request.email:
-        user_data["role"] = "admin"
-        user_data["name"] = "Admin " + request.email.split("@")[0].title()
-    else:
-        user_data["name"] = "Student " + request.email.split("@")[0].title()
-    
-    return {
-        "token": f"demo-token-{request.email}-{datetime.now().timestamp()}",
-        "user": user_data
-    }
+    """Handle user login - check against Supabase"""
+    try:
+        if supabase:
+            # Get user from Supabase
+            response = supabase.table('users').select("*").eq('email', request.email).execute()
+            
+            if response.data and len(response.data) > 0:
+                user_data = response.data[0]
+                logger.info(f"User logged in: {user_data['email']}")
+                return {
+                    "token": f"token-{user_data['id']}-{datetime.now().timestamp()}",
+                    "user": user_data
+                }
+            else:
+                raise HTTPException(status_code=404, detail="User not found. Please register first.")
+        else:
+            # Fallback to demo mode if Supabase not connected
+            logger.warning("Using demo mode - Supabase not connected")
+            user_data = {
+                "id": f"demo-user-{random.randint(1000, 9999)}",
+                "email": request.email,
+                "name": request.email.split("@")[0].title(),
+                "role": "teacher" if "teacher" in request.email else "student",
+                "institution": "University of Education, Winneba",
+                "institution_type": "university",
+                "program": "B.Ed Early Grade",
+                "year": 2
+            }
+            
+            return {
+                "token": f"demo-token-{request.email}-{datetime.now().timestamp()}",
+                "user": user_data
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Login failed. Please try again.")
 
 @app.post("/auth/register")
 async def register(request: RegisterRequest):
-    """Handle user registration"""
-    return {
-        "token": f"demo-token-{request.email}-{datetime.now().timestamp()}",
-        "user": {
-            "id": f"user-{random.randint(1000, 9999)}",
-            "name": request.name,
-            "email": request.email,
-            "role": request.role,
-            "institution": request.institution,
-            "institutionType": request.institutionType,
-            "program": request.program,
-            "year": int(request.year) if request.year else 1
-        }
-    }
+    """Handle user registration - save to Supabase"""
+    try:
+        if supabase:
+            # Check if user already exists
+            existing = supabase.table('users').select("*").eq('email', request.email).execute()
+            if existing.data and len(existing.data) > 0:
+                raise HTTPException(status_code=400, detail="Email already registered")
+            
+            # Create new user
+            user_data = {
+                "email": request.email,
+                "name": request.name,
+                "role": request.role,
+                "institution": request.institution,
+                "institution_type": request.institutionType,
+                "program": request.program if request.program else None,
+                "year": int(request.year) if request.year else None
+            }
+            
+            response = supabase.table('users').insert(user_data).execute()
+            
+            if response.data and len(response.data) > 0:
+                created_user = response.data[0]
+                logger.info(f"New user registered: {created_user['email']}")
+                return {
+                    "token": f"token-{created_user['id']}-{datetime.now().timestamp()}",
+                    "user": created_user
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Failed to create user")
+        else:
+            # Fallback to demo mode if Supabase not connected
+            logger.warning("Using demo mode - Supabase not connected")
+            return {
+                "token": f"demo-token-{request.email}-{datetime.now().timestamp()}",
+                "user": {
+                    "id": f"demo-user-{random.randint(1000, 9999)}",
+                    "name": request.name,
+                    "email": request.email,
+                    "role": request.role,
+                    "institution": request.institution,
+                    "institution_type": request.institutionType,
+                    "program": request.program,
+                    "year": int(request.year) if request.year else 1
+                }
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 @app.post("/chat")
 async def chat_with_ai(request: ChatRequest):
@@ -483,6 +555,36 @@ async def chat_with_ai(request: ChatRequest):
         
         # Check if web search was mentioned (for metadata)
         used_web_search = "search" in request.message.lower() or "latest" in request.message.lower()
+        
+        # Save chat messages to database if user_id is provided
+        if supabase and request.user_id:
+            try:
+                # Save user message
+                supabase.table('chat_messages').insert({
+                    "user_id": request.user_id,
+                    "custom_gpt_id": request.custom_gpt_id,
+                    "role": "user",
+                    "content": request.message,
+                    "metadata": {}
+                }).execute()
+                
+                # Save AI response
+                supabase.table('chat_messages').insert({
+                    "user_id": request.user_id,
+                    "custom_gpt_id": request.custom_gpt_id,
+                    "role": "assistant",
+                    "content": ai_response,
+                    "metadata": {
+                        "model": "gpt-4",
+                        "used_web_search": used_web_search,
+                        "curriculum_context": True
+                    }
+                }).execute()
+                
+                logger.info(f"Chat messages saved for user {request.user_id}")
+            except Exception as e:
+                logger.error(f"Failed to save chat messages: {e}")
+                # Continue without saving - don't fail the request
         
         return {
             "response": ai_response,
@@ -707,4 +809,5 @@ if __name__ == "__main__":
     
     # Just run the API server
     logger.info(f"Starting Ghana Teacher Education API on port {port}")
+    logger.info(f"Database status: {'Connected' if supabase else 'Not connected - using demo mode'}")
     uvicorn.run(app, host="0.0.0.0", port=port)
