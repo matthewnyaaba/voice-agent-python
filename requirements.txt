@@ -10,9 +10,15 @@ fastapi
 uvicorn[standard]
 python-multipart
 pydantic
+aiofiles
 
 # Environment and utilities
 python-dotenv
 
-# CORS support
-aiofiles
+# Document processing
+PyPDF2>=3.0.0
+python-docx
+openpyxl
+
+# Audio processing (for voice samples)
+pydub
