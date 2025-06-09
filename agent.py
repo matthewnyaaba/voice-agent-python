@@ -540,11 +540,11 @@ async def chat_with_ai(request: ChatRequest):
             "content": request.message
         })
         
-        # Get response from OpenAI
-        import openai as openai_client
-        openai_client.api_key = os.getenv("OPENAI_API_KEY")
+        # Get response from OpenAI - UPDATED FOR NEW VERSION
+        from openai import OpenAI
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
-        response = openai_client.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=messages,
             temperature=0.7,
