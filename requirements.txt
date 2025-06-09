@@ -22,3 +22,13 @@ openpyxl
 
 # Audio processing (for voice samples)
 pydub
+
+# Supabase for database (ADD THESE LINES)
+supabase==2.3.0
+postgrest==0.13.0
+gotrue==2.1.0
+realtime==1.0.2
+storage3==0.6.1
+
+# OpenAI for chat (ADD THIS LINE)
+openai==0.28.1
