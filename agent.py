@@ -73,6 +73,15 @@ class RegisterRequest(BaseModel):
     year: str = "1"
     semester: str = "1"
 
+class ChatRequest(BaseModel):
+    message: str
+    user_role: str = "student"
+    user_program: Optional[str] = None
+    user_year: Optional[int] = None
+    custom_gpt_id: Optional[str] = None
+    custom_instructions: Optional[str] = None
+    conversation_history: Optional[List[Dict]] = None
+
 # Ghana Curriculum Context
 GHANA_CURRICULUM_CONTEXT = """
 GHANA B.Ed CURRICULUM KNOWLEDGE BASE:
@@ -90,27 +99,74 @@ GHANA B.Ed CURRICULUM KNOWLEDGE BASE:
    - ICT 121: Educational Technology (3 credits)
    - STS 121: School Experience I (3 credits)
 
-2. TEACHING PRACTICE STRUCTURE:
+2. YEAR 2 COURSES:
+   Semester 1:
+   - PED 211: Principles and Methods of Teaching (3 credits)
+   - ASE 211: Assessment in Education (3 credits)
+   - INC 211: Inclusive Education (3 credits)
+   - SUB 211: Subject Specialization I (3 credits)
+   
+   Semester 2:
+   - CLM 221: Classroom Management (3 credits)
+   - EDR 221: Educational Research (3 credits)
+   - STS 221: Teaching Practice I (3 credits)
+   - SUB 221: Subject Specialization II (3 credits)
+
+3. YEAR 3 COURSES:
+   Semester 1:
+   - ADV 311: Advanced Pedagogy (3 credits)
+   - SCM 311: School and Community (3 credits)
+   - SUB 311: Subject Specialization III (3 credits)
+   - PRE 311: Preparation for Teaching Practice (2 credits)
+   
+   Semester 2:
+   - STS 321: Extended Teaching Practice (12 credits)
+   - Continuous assessment and mentoring
+
+4. YEAR 4 COURSES:
+   Semester 1:
+   - EDL 411: Educational Leadership (3 credits)
+   - ARS 411: Action Research I (3 credits)
+   - SUB 411: Advanced Subject Studies (3 credits)
+   - ETH 411: Professional Ethics (2 credits)
+   
+   Semester 2:
+   - ARS 421: Action Research II (3 credits)
+   - STS 421: Independent Teaching (6 credits)
+   - CAP 421: Capstone Project (3 credits)
+
+5. TEACHING PRACTICE STRUCTURE:
    - Year 1: 1 week school observation
    - Year 2: 4 weeks assisted teaching
    - Year 3: 12 weeks teaching practice (off-campus)
    - Year 4: 6 weeks independent teaching
 
-3. SPECIALIZATION PROGRAMS:
+6. SPECIALIZATION PROGRAMS:
    - Early Grade (KG-P3): Focus on play-based learning, phonics, early numeracy
    - Upper Primary (P4-P6): Subject specialization, transition pedagogy
    - JHS (Forms 1-3): Subject expertise, adolescent psychology
 
-4. ASSESSMENT RUBRICS:
+7. ASSESSMENT STRUCTURE:
+   - Continuous Assessment: 40%
+   - End of Semester Exam: 60%
+   - Teaching Practice: Pass/Fail with detailed rubrics
+
+8. ASSESSMENT RUBRICS FOR TEACHING PRACTICE:
    - Lesson Planning: 20% (objectives, activities, assessment alignment)
    - Delivery: 30% (communication, classroom management, student engagement)
    - Subject Mastery: 25% (content accuracy, depth of knowledge)
    - Professional Conduct: 25% (punctuality, ethics, collaboration)
 
-5. KEY POLICIES:
+9. KEY POLICIES:
    - Inclusive Education Policy: All teachers must accommodate diverse learners
    - Language Policy: Bilingual instruction (local language + English)
    - ICT Policy: Digital literacy integration in all subjects
+   - Gender Responsive Pedagogy: Equal opportunities for all learners
+
+10. NATIONAL TEACHERS' STANDARDS (NTS):
+    - Professional Values and Attitudes
+    - Professional Knowledge
+    - Professional Practice
 """
 
 # Document processing capability
@@ -339,36 +395,165 @@ async def register(request: RegisterRequest):
         }
     }
 
+@app.post("/chat")
+async def chat_with_ai(request: ChatRequest):
+    """Handle chat messages and return AI responses with curriculum knowledge"""
+    try:
+        # Build context from request
+        user_context = {
+            "role": request.user_role,
+            "program": request.user_program,
+            "year": request.user_year
+        }
+        
+        # Create conversation prompt
+        messages = [
+            {
+                "role": "system",
+                "content": f"""
+                You are an AI Teacher Education Assistant for Ghana with deep knowledge of the B.Ed curriculum.
+                
+                {GHANA_CURRICULUM_CONTEXT}
+                
+                USER CONTEXT:
+                - Role: {request.user_role}
+                - Program: {request.user_program or 'General B.Ed'}
+                - Year: {request.user_year or 'Not specified'}
+                
+                CUSTOM INSTRUCTIONS:
+                {request.custom_instructions or 'Provide helpful, curriculum-aligned responses.'}
+                
+                IMPORTANT:
+                - Always reference specific course codes (e.g., EPS 111)
+                - Use Ghanaian context and examples
+                - Be encouraging and supportive
+                - Provide practical teaching advice
+                - Reference NTS and NTECF when relevant
+                - For lesson planning, include objectives, activities, and assessment
+                - Use local examples (cedis for math, local foods for fractions)
+                """
+            }
+        ]
+        
+        # Add conversation history if provided
+        if request.conversation_history:
+            for msg in request.conversation_history[-5:]:  # Last 5 messages for context
+                messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", "")
+                })
+        
+        # Add current message
+        messages.append({
+            "role": "user",
+            "content": request.message
+        })
+        
+        # Get response from OpenAI
+        import openai as openai_client
+        openai_client.api_key = os.getenv("OPENAI_API_KEY")
+        
+        response = openai_client.ChatCompletion.create(
+            model="gpt-4",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1000
+        )
+        
+        ai_response = response.choices[0].message.content
+        
+        # Check if web search was mentioned (for metadata)
+        used_web_search = "search" in request.message.lower() or "latest" in request.message.lower()
+        
+        return {
+            "response": ai_response,
+            "model": "gpt-4",
+            "used_web_search": used_web_search,
+            "curriculum_context": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        
+        # Fallback response with curriculum knowledge
+        fallback_response = f"""
+        I understand you're asking about: {request.message}
+        
+        Based on Ghana's B.Ed curriculum, here's what I can tell you:
+        
+        The B.Ed program consists of:
+        - 4-year structure with 8 semesters
+        - Core courses like Educational Psychology (EPS 111), Child Development (EPS 121)
+        - Teaching Practice progressing from observation to independent teaching
+        - Specializations in Early Grade, Upper Primary, or JHS
+        
+        For Year 1 students:
+        Semester 1: EPS 111, PFC 111, LIT 111, NUM 111
+        Semester 2: EPS 121, CUR 121, ICT 121, STS 121
+        
+        Please try rephrasing your question or ask about specific courses or topics.
+        """
+        
+        return {
+            "response": fallback_response,
+            "model": "fallback",
+            "error": str(e)
+        }
+
 @app.get("/api/curriculum/courses")
 async def get_curriculum_courses():
     """Get B.Ed curriculum courses"""
     return {
         "year1": {
             "semester1": [
-                "Educational Psychology",
-                "Introduction to Teaching",
-                "Communication Skills",
-                "African Studies"
+                {"code": "EPS 111", "name": "Educational Psychology", "credits": 3},
+                {"code": "PFC 111", "name": "Professional Practice", "credits": 3},
+                {"code": "LIT 111", "name": "Literacy Studies I", "credits": 3},
+                {"code": "NUM 111", "name": "Numeracy and Problem Solving", "credits": 3}
             ],
             "semester2": [
-                "Child Development",
-                "Curriculum Studies",
-                "Educational Technology",
-                "Ghanaian Language"
+                {"code": "EPS 121", "name": "Child Development", "credits": 3},
+                {"code": "CUR 121", "name": "Curriculum Studies", "credits": 3},
+                {"code": "ICT 121", "name": "Educational Technology", "credits": 3},
+                {"code": "STS 121", "name": "School Experience I", "credits": 3}
             ]
         },
         "year2": {
             "semester1": [
-                "Teaching Methods",
-                "Assessment in Education",
-                "Inclusive Education",
-                "Subject Specialization I"
+                {"code": "PED 211", "name": "Principles and Methods of Teaching", "credits": 3},
+                {"code": "ASE 211", "name": "Assessment in Education", "credits": 3},
+                {"code": "INC 211", "name": "Inclusive Education", "credits": 3},
+                {"code": "SUB 211", "name": "Subject Specialization I", "credits": 3}
             ],
             "semester2": [
-                "Classroom Management",
-                "Educational Research",
-                "Teaching Practice I",
-                "Subject Specialization II"
+                {"code": "CLM 221", "name": "Classroom Management", "credits": 3},
+                {"code": "EDR 221", "name": "Educational Research", "credits": 3},
+                {"code": "STS 221", "name": "Teaching Practice I", "credits": 3},
+                {"code": "SUB 221", "name": "Subject Specialization II", "credits": 3}
+            ]
+        },
+        "year3": {
+            "semester1": [
+                {"code": "ADV 311", "name": "Advanced Pedagogy", "credits": 3},
+                {"code": "SCM 311", "name": "School and Community", "credits": 3},
+                {"code": "SUB 311", "name": "Subject Specialization III", "credits": 3},
+                {"code": "PRE 311", "name": "Preparation for Teaching Practice", "credits": 2}
+            ],
+            "semester2": [
+                {"code": "STS 321", "name": "Extended Teaching Practice", "credits": 12}
+            ]
+        },
+        "year4": {
+            "semester1": [
+                {"code": "EDL 411", "name": "Educational Leadership", "credits": 3},
+                {"code": "ARS 411", "name": "Action Research I", "credits": 3},
+                {"code": "SUB 411", "name": "Advanced Subject Studies", "credits": 3},
+                {"code": "ETH 411", "name": "Professional Ethics", "credits": 2}
+            ],
+            "semester2": [
+                {"code": "ARS 421", "name": "Action Research II", "credits": 3},
+                {"code": "STS 421", "name": "Independent Teaching", "credits": 6},
+                {"code": "CAP 421", "name": "Capstone Project", "credits": 3}
             ]
         }
     }
@@ -380,18 +565,52 @@ async def get_teaching_standards():
         "nts": {
             "name": "National Teachers' Standards",
             "domains": [
-                "Professional Values and Attitudes",
-                "Professional Knowledge",
-                "Professional Practice"
+                {
+                    "name": "Professional Values and Attitudes",
+                    "standards": [
+                        "Commitment to learners and learning",
+                        "Professional conduct and ethics",
+                        "Collaborative practices"
+                    ]
+                },
+                {
+                    "name": "Professional Knowledge",
+                    "standards": [
+                        "Knowledge of educational frameworks",
+                        "Knowledge of learners",
+                        "Subject and curriculum knowledge"
+                    ]
+                },
+                {
+                    "name": "Professional Practice",
+                    "standards": [
+                        "Planning and preparation",
+                        "Managing the learning environment",
+                        "Teaching and learning",
+                        "Assessment"
+                    ]
+                }
             ]
         },
         "ntecf": {
             "name": "National Teacher Education Curriculum Framework",
             "pillars": [
-                "Subject and Curriculum Knowledge",
-                "Pedagogical Knowledge", 
-                "Literacy Studies",
-                "Supported Teaching in Schools"
+                {
+                    "name": "Subject and Curriculum Knowledge",
+                    "description": "Deep understanding of subject matter and curriculum"
+                },
+                {
+                    "name": "Pedagogical Knowledge",
+                    "description": "Knowledge of how to teach effectively"
+                },
+                {
+                    "name": "Literacy Studies",
+                    "description": "English, Ghanaian languages, and digital literacy"
+                },
+                {
+                    "name": "Supported Teaching in Schools",
+                    "description": "Practical classroom experience with mentoring"
+                }
             ]
         }
     }
